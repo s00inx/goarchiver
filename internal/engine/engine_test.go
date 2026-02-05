@@ -7,15 +7,14 @@ import (
 	"bytes"
 	"compress/gzip"
 	"io"
-	"os"
 	"strings"
 	"testing"
 )
 
 // загрузить данные для тестов
 func loadData() []byte {
-	data, _ := os.ReadFile("../../testdata/nci") // здесь можно вставить путь у к любому файлу
-	// data := bytes.Repeat([]byte("ThisDataEquals16B"), 64*1024) // пока просто повторяющиеся байты (1 Мб)
+	// data, _ := os.ReadFile("../../testdata/nci") // здесь можно вставить путь у к любому файлу
+	data := bytes.Repeat([]byte("ThisDataEquals16B"), 64*1024) // пока просто повторяющиеся байты (1 Мб)
 	return data
 }
 
