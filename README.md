@@ -161,10 +161,10 @@ go build -ldflags="-s -w" -o goarc.exe ./cmd/goarc/main.go
 
 ```
 # Сжатие
-goarc pack <file>
+goarc p <file>
 
 # Распаковка
-goarc unpack <file.arc>
+goarc u <file.arc>
 ```
 ### Запуск тестов и бенчмарков
 

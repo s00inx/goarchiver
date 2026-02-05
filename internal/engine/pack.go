@@ -69,6 +69,10 @@ var (
 // функция собирает кучу и дерево на основе файла (по 1 проходу), и вызывает pack (2 проход по файлу),
 // она вызывается из мейна
 func Compress(filename string, size uint64, inputFile io.Reader, outputFile io.Writer) error {
+	if size == 0 {
+		return errors.New("empty input.")
+	}
+
 	bufPtr := bufferPool.Get().(*[]byte)
 	buf := *bufPtr
 	defer bufferPool.Put(bufPtr)

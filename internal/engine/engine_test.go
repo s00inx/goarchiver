@@ -35,7 +35,9 @@ func BenchmarkUnpack(b *testing.B) {
 		inputReader.Reset(cbytes) // очищаем буферы перед очередным проходом
 		br.Reset(inputReader)
 
-		Open(br) // просто скипаем эти 2 функции
+		if err := Open(br); err != nil {
+			b.Fatal(err)
+		}
 		ReadDest(br, "")
 
 		err := Decompress(br, io.Discard)

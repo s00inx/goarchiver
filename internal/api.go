@@ -2,7 +2,7 @@ package internal
 
 import (
 	"bufio"
-	"fmt"
+	"errors"
 	"os"
 	"path/filepath"
 
@@ -10,18 +10,18 @@ import (
 )
 
 // путь к файлу --> архивация --> путь к архиву или ошибка
-func PackFile(path string, odir string) (string, error) {
+func PackFile(path string, odir string) error {
 	// открываем файл
 	file, err := os.Open(path)
 	if err != nil {
-		return "", fmt.Errorf("error opening a file: %w", err)
+		return errors.New("error opening a file: " + err.Error())
 	}
 	defer file.Close()
 
 	// обрабатываем пустой файл (частный случай)
 	stat, err := file.Stat()
 	if err != nil {
-		return "", fmt.Errorf("error getting file metadata: %w", err)
+		return errors.New("error getting a file metadata: " + err.Error())
 	}
 
 	// даже если файл пустой создаем новый файл для результата
@@ -36,35 +36,30 @@ func PackFile(path string, odir string) (string, error) {
 	}
 	out, err := os.Create(outpath)
 	if err != nil {
-		return "", fmt.Errorf("error creating a result file: %w", err)
+		return errors.New("error creating a file: " + err.Error())
 	}
 	defer func() {
 		out.Close()
 	}()
 
-	// обрабатываем пустой файл и выходим
-	if stat.Size() == 0 {
-		return outpath, nil
-	}
-
 	err = engine.Compress(base, uint64(stat.Size()), file, out)
 	if err != nil {
 		out.Close()
 		os.Remove(outpath)
-		return "", fmt.Errorf("error compressing a file: %w", err)
+		return errors.New("error comressing: " + err.Error())
 	}
 
 	if err := out.Close(); err != nil {
-		return "", fmt.Errorf("error closing result file: %w", err)
+		return errors.New("error closing a file: " + err.Error())
 	}
-	return outpath, nil
+	return nil
 }
 
 // распаковать файл (архив --> ошибка или создать файл)
 func UnpackFile(srcpath string) error {
 	f, err := os.Open(srcpath)
 	if err != nil {
-		return fmt.Errorf("error opening a file.")
+		return errors.New("error opening a file: " + err.Error())
 	}
 
 	r := bufio.NewReader(f) // делаем новый ридер на файл 1 раз
