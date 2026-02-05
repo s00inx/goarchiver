@@ -12,107 +12,148 @@ import (
 	"testing"
 )
 
-func BenchmarkUnpack(b *testing.B) {
-	cdata, _ := os.ReadFile("../../testdata/mozilla_zipped.arc")
+// загрузить данные для тестов
+func loadData() []byte {
+	data, _ := os.ReadFile("../../testdata/nci") // здесь можно вставить путь у к любому файлу
+	// data := bytes.Repeat([]byte("ThisDataEquals16B"), 64*1024) // пока просто повторяющиеся байты (1 Мб)
+	return data
+}
 
-	// сразу создаем тут и редер и райтер чтобы переиспользовать их в бенчмарках
-	inputReader := bytes.NewReader(cdata)
-	br := bufio.NewReader(inputReader)
+func BenchmarkUnpack(b *testing.B) {
+	raw := loadData()
+
+	var compbuf bytes.Buffer
+	compbuf.Grow(len(raw))
+	Compress("test.txt", uint64(len(raw)), bytes.NewReader(raw), &compbuf) // 1 раз сжимаем данные и создаем ридеры
+
+	br := bufio.NewReader(&compbuf)
+	cbytes := compbuf.Bytes()
+	inputReader := bytes.NewReader(nil)
 
 	b.ReportAllocs()
-	b.ResetTimer() // теперь сбрасываем таймер и начинаем замер!
-	for i := 0; i < b.N; i++ {
-		inputReader.Reset(cdata) // очищаем буферы перед очередным проходом
+	b.ResetTimer()
+	for b.Loop() {
+		inputReader.Reset(cbytes) // очищаем буферы перед очередным проходом
 		br.Reset(inputReader)
 
 		Open(br) // просто скипаем эти 2 функции
 		ReadDest(br, "")
 
-		err := Decompress(br, io.Discard) // анпак работает с уже созданными ридером, что позволяет не расходовать память на его создание
+		err := Decompress(br, io.Discard)
 		if err != nil {
 			b.Fatal(err)
 		}
 	}
 
-	b.SetBytes(int64(len(cdata)))
+	b.SetBytes(int64(len(raw)))
 }
 
-func BenchmarkGzipUnpack(b *testing.B) {
-	cdata, _ := os.ReadFile("../../testdata/mozilla.gz")
-
-	r, _ := gzip.NewReader(bytes.NewReader(cdata))
-
-	inputReader := bytes.NewReader(cdata)
-
-	b.ReportAllocs()
-	b.ResetTimer()
-
-	for i := 0; i < b.N; i++ {
-		inputReader.Reset(cdata)
-
-		_ = r.Reset(inputReader)
-
-		_, err := io.Copy(io.Discard, r)
-		if err != nil {
-			b.Fatal(err)
-		}
-
-		_ = r.Close()
-	}
-
-	b.SetBytes(int64(len(cdata)))
-}
-
-func BenchmarkBytesPack(b *testing.B) {
-	data := bytes.Repeat([]byte("ThisDataEquals16B"), 64*1024) // 64 кБ
-	b.SetBytes(int64(len(data)))
-	input := bytes.NewReader(data)
-
-	b.ReportAllocs()
-	b.ResetTimer()
-	for i := 0; i < b.N; i++ {
-		input.Reset(data)
-
-		err := Compress("test.txt", uint64(len(data)), input, io.Discard)
-		if err != nil {
-			b.Fatal(err)
-		}
-	}
-}
-
-func loadData() []byte {
-	data, _ := os.ReadFile("../../testdata/reymont")
-	return data
-}
-
-func BenchmarkFilePack(b *testing.B) {
+func BenchmarkPack(b *testing.B) {
 	raw := loadData()
 	le := uint64(len(raw))
 
+	input := bytes.NewReader(nil)
+	br := bufio.NewReader(input)
+
 	b.ReportAllocs()
 	b.SetBytes(int64(le))
+
 	b.ResetTimer()
 
-	input := bytes.NewReader(raw)
-	for i := 0; i < b.N; i++ {
+	for b.Loop() {
 		input.Reset(raw)
+		br.Reset(input)
+
 		_ = Compress("test.data", le, input, io.Discard)
 	}
 }
 
-func BenchmarkGzipFilePack(b *testing.B) {
+func BenchmarkGzipUnpack(b *testing.B) {
 	raw := loadData()
 
-	w, _ := gzip.NewWriterLevel(io.Discard, gzip.DefaultCompression)
+	var compbuf bytes.Buffer
+	gw := gzip.NewWriter(&compbuf)
+	gw.Write(raw)
+	gw.Close()
+	cbytes := compbuf.Bytes()
+
+	inputReader := bytes.NewReader(nil)
+	gr, _ := gzip.NewReader(bytes.NewReader(cbytes))
 
 	b.ReportAllocs()
-	b.SetBytes(int64(len(raw)))
 	b.ResetTimer()
 
-	for i := 0; i < b.N; i++ {
-		w.Reset(io.Discard)
-		_, _ = w.Write(raw)
-		_ = w.Close()
+	for b.Loop() {
+		inputReader.Reset(cbytes)
+		_ = gr.Reset(inputReader)
+
+		// Распаковываем в никуда
+		_, err := io.Copy(io.Discard, gr)
+		if err != nil {
+			b.Fatal(err)
+		}
+		_ = gr.Close()
+	}
+
+	b.SetBytes(int64(len(raw)))
+}
+
+func BenchmarkGzipPack(b *testing.B) {
+	raw := loadData()
+	le := int64(len(raw))
+
+	gw := gzip.NewWriter(io.Discard)
+
+	b.ReportAllocs()
+	b.SetBytes(le)
+	b.ResetTimer()
+
+	for b.Loop() {
+		gw.Reset(io.Discard)
+
+		_, err := gw.Write(raw)
+		if err != nil {
+			b.Fatal(err)
+		}
+
+		err = gw.Close()
+		if err != nil {
+			b.Fatal(err)
+		}
+	}
+}
+
+func TestPackUnpackCycle(t *testing.T) {
+	tests := []struct {
+		name    string
+		data    []byte
+		wantErr bool
+		errText string
+	}{
+		{
+			name:    "Short Phrase",
+			data:    []byte("если вы это читаете пусть у вас будет хороший день!"),
+			wantErr: false,
+			errText: "",
+		},
+		{
+			name:    "SingleChar",
+			data:    []byte("AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA"),
+			wantErr: false,
+			errText: "",
+		},
+		{
+			name:    "Repeated",
+			data:    []byte(bytes.Repeat([]byte("abc123"), 1000)),
+			wantErr: false,
+			errText: "",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			runRoundTripTest(t, tt.name, tt.data, tt.wantErr, tt.errText)
+		})
 	}
 }
 
@@ -169,38 +210,4 @@ func checkError(t *testing.T, name string, wantErr bool, err error, errText stri
 	}
 
 	return false
-}
-
-func TestPackUnpackCycle(t *testing.T) {
-	tests := []struct {
-		name    string
-		data    []byte
-		wantErr bool
-		errText string
-	}{
-		{
-			name:    "Short Phrase",
-			data:    []byte("если вы это читаете пусть у вас будет хороший день!"),
-			wantErr: false,
-			errText: "",
-		},
-		{
-			name:    "SingleChar",
-			data:    []byte("AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA"),
-			wantErr: false,
-			errText: "",
-		},
-		{
-			name:    "Repeated",
-			data:    []byte(bytes.Repeat([]byte("abc123"), 1000)),
-			wantErr: false,
-			errText: "",
-		},
-	}
-
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			runRoundTripTest(t, tt.name, tt.data, tt.wantErr, tt.errText)
-		})
-	}
 }
